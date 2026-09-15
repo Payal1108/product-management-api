@@ -1,4 +1,5 @@
 import { productModel } from '../models/product.js';
+import { catchAsync } from '../middleware/catchAsync.js';
 
 const sendResponse = (res, data, statusCode = 200) =>
   res.status(statusCode).json({ success: true, data, error: null });
@@ -7,59 +8,44 @@ const sendError = (res, error, statusCode = 500) =>
   res.status(statusCode).json({ success: false, data: null, error: error.message || error });
 
 export const productController = {
-  getAllProducts: async (req, res, next) => {
-    try {
-      const products = productModel.findAll(req.query);
-      sendResponse(res, products);
-    } catch (error) {
-      next(error);
-    }
-  },
+  getAllProducts: catchAsync(async (req, res, next) => {
+    const filters = { ...req.query };
+    if (filters.minPrice) filters.minPrice = parseFloat(filters.minPrice);
+    if (filters.maxPrice) filters.maxPrice = parseFloat(filters.maxPrice);
 
-  getProductById: async (req, res, next) => {
-    try {
-      const product = productModel.findById(req.params.id);
-      if (!product) return sendError(res, 'Product not found', 404);
-      sendResponse(res, product);
-    } catch (error) {
-      next(error);
-    }
-  },
+    const products = productModel.findAll(filters);
+    sendResponse(res, products);
+  }),
 
-  createProduct: async (req, res, next) => {
-    try {
-      const { name, sku, price, stock } = req.body;
-      if (!name || !sku || price === undefined || stock === undefined) {
-        return sendError(res, 'Missing required fields: name, sku, price, stock', 400);
-      }
+  getProductById: catchAsync(async (req, res, next) => {
+    const product = productModel.findById(req.params.id);
+    if (!product) return sendError(res, 'Product not found', 404);
+    sendResponse(res, product);
+  }),
 
-      if (price <= 0) return sendError(res, 'Price must be a positive number', 400);
-      if (stock < 0) return sendError(res, 'Stock cannot be negative', 400);
+  createProduct: catchAsync(async (req, res, next) => {
+    const product = productModel.create(req.body);
+    sendResponse(res, product, 201);
+  }),
 
-      const product = productModel.create(req.body);
-      sendResponse(res, product, 201);
-    } catch (error) {
-      next(error);
-    }
-  },
+  updateProduct: catchAsync(async (req, res, next) => {
+    const product = productModel.update(req.params.id, req.body);
+    if (!product) return sendError(res, 'Product not found', 404);
+    sendResponse(res, product);
+  }),
 
-  updateProduct: async (req, res, next) => {
-    try {
-      const product = productModel.update(req.params.id, req.body);
-      if (!product) return sendError(res, 'Product not found', 404);
-      sendResponse(res, product);
-    } catch (error) {
-      next(error);
-    }
-  },
+  deleteProduct: catchAsync(async (req, res, next) => {
+    const product = productModel.findById(req.params.id);
+    if (!product) return sendError(res, 'Product not found', 404);
 
-  deleteProduct: async (req, res, next) => {
-    try {
-      const deleted = productModel.delete(req.params.id);
-      if (!deleted) return sendError(res, 'Product not found', 404);
-      sendResponse(res, { message: 'Product deleted successfully' });
-    } catch (error) {
-      next(error);
-    }
-  },
+    const deleted = productModel.delete(req.params.id);
+    if (!deleted) return sendError(res, 'Product not found', 404);
+    sendResponse(res, { message: 'Product deleted successfully' });
+  }),
+
+  restoreProduct: catchAsync(async (req, res, next) => {
+    const restored = productModel.restore(req.params.id);
+    if (!restored) return sendError(res, 'Product not found', 404);
+    sendResponse(res, { message: 'Product restored successfully' });
+  }),
 };
