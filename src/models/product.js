@@ -6,14 +6,30 @@ const VALID_CATEGORIES = ['electronics', 'clothing', 'food', 'books', 'other'];
 const VALID_STATUSES = ['active', 'inactive', 'discontinued'];
 
 export const productModel = {
-  findAll: ({ category, status } = {}) => {
-    let result = Array.from(products.values());
+  findAll: (filters = {}) => {
+    const { category, status, minPrice, maxPrice, inStock, search } = filters;
+    let result = Array.from(products.values()).filter(p => p.archivedAt === null);
+
     if (category) result = result.filter(p => p.category === category);
     if (status) result = result.filter(p => p.status === status);
+    if (minPrice !== undefined) result = result.filter(p => p.price >= minPrice);
+    if (maxPrice !== undefined) result = result.filter(p => p.price <= maxPrice);
+    if (inStock !== undefined) {
+      const shouldBeInStock = inStock === true || inStock === 'true';
+      result = result.filter(p => shouldBeInStock ? p.stock > 0 : p.stock === 0);
+    }
+    if (search) {
+      const s = search.toLowerCase();
+      result = result.filter(p => p.name.toLowerCase().includes(s) || p.description.toLowerCase().includes(s));
+    }
     return result;
   },
 
-  findById: (id) => products.get(id),
+  findById: (id) => {
+    const product = products.get(id);
+    if (!product || product.archivedAt !== null) return null;
+    return product;
+  },
 
   findBySku: (sku) => Array.from(products.values()).find(p => p.sku === sku),
 
@@ -39,6 +55,7 @@ export const productModel = {
       price: parseFloat(parseFloat(data.price).toFixed(2)),
       stock: parseInt(data.stock, 10),
       status: data.status || 'active',
+      archivedAt: null,
       createdAt: new Date(),
     };
 
@@ -48,7 +65,7 @@ export const productModel = {
 
   update: (id, patch) => {
     const product = products.get(id);
-    if (!product) return null;
+    if (!product || product.archivedAt !== null) return null;
 
     if (patch.category && !VALID_CATEGORIES.includes(patch.category)) {
       throw new Error(`Invalid category. Must be one of: ${VALID_CATEGORIES.join(', ')}`);
@@ -69,5 +86,19 @@ export const productModel = {
     return updatedProduct;
   },
 
-  delete: (id) => products.delete(id),
+  delete: (id) => {
+    const product = products.get(id);
+    if (!product) return false;
+    product.archivedAt = new Date();
+    products.set(id, product);
+    return true;
+  },
+
+  restore: (id) => {
+    const product = products.get(id);
+    if (!product) return false;
+    product.archivedAt = null;
+    products.set(id, product);
+    return true;
+  },
 };
