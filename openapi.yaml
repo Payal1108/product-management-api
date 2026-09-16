@@ -1,0 +1,334 @@
+openapi: 3.0.3
+info:
+  title: Product Management API
+  description: A RESTful API for managing a product catalogue with advanced filtering and soft-archive capabilities.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+paths:
+  /products:
+    get:
+      summary: List all active products
+      description: Retrieves a list of products that are not archived, with optional filters.
+      parameters:
+        - name: category
+          in: query
+          description: Filter by product category
+          schema:
+            type: string
+            enum: [electronics, clothing, food, books, other]
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            type: string
+            enum: [active, inactive, discontinued]
+        - name: minPrice
+          in: query
+          description: Minimum inclusive price
+          schema:
+            type: number
+        - name: maxPrice
+          in: query
+          description: Maximum inclusive price
+          schema:
+            type: number
+        - name: inStock
+          in: query
+          description: Filter by stock availability
+          schema:
+            type: string
+            enum: ["true", "false"]
+        - name: search
+          in: query
+          description: Search term matching name or description
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully retrieved products
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListResponse'
+        '422':
+          description: Unprocessable Entity - Invalid filter parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Create a new product
+      description: Adds a new product to the catalogue. SKU must be unique.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '201':
+          description: Product created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductCreateResponse'
+        '409':
+          description: Conflict - SKU already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity - Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /products/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The UUID of the product
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Get product by ID
+      description: Retrieves a specific product. Returns 404 if the product is archived.
+      responses:
+        '200':
+          description: Successfully retrieved the product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDetailResponse'
+        '404':
+          description: Product not found or archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      summary: Partially update a product
+      description: Updates specific fields of an existing product. ID and SKU are immutable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductPatch'
+      responses:
+        '200':
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDetailResponse'
+        '400':
+          description: Bad Request - Empty body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Product not found or archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity - Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Soft-archive a product
+      description: Marks the product as archived, removing it from standard lookups.
+      responses:
+        '204':
+          description: Product archived successfully
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /products/{id}/restore:
+    delete:
+      summary: Restore an archived product
+      description: Removes the archive timestamp from a product.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The UUID of the product
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Product restored successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+        '400':
+          description: Bad Request - Product was not archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 'b241dc37-8391-4e44-9aa0-374205e24af8'
+        name:
+          type: string
+          example: 'Wireless Keyboard'
+        sku:
+          type: string
+          example: 'KB-001'
+        description:
+          type: string
+          example: 'Ergonomic wireless keyboard'
+        category:
+          type: string
+          enum: [electronics, clothing, food, books, other]
+          example: 'electronics'
+        price:
+          type: number
+          format: float
+          example: 49.99
+        stock:
+          type: integer
+          example: 120
+        status:
+          type: string
+          enum: [active, inactive, discontinued]
+          example: 'active'
+        createdAt:
+          type: string
+          format: date-time
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+    ProductInput:
+      type: object
+      required: [name, sku, price, stock]
+      properties:
+        name:
+          type: string
+        sku:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+          enum: [electronics, clothing, food, books, other]
+        price:
+          type: number
+          minimum: 0.01
+        stock:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [active, inactive, discontinued]
+
+    ProductPatch:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+          enum: [electronics, clothing, food, books, other]
+        price:
+          type: number
+          minimum: 0.01
+        stock:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [active, inactive, discontinued]
+
+    ApiEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          nullable: true
+        error:
+          type: string
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        data:
+          type: object
+          nullable: true
+          example: null
+        error:
+          type: string
+          example: 'Product not found'
+
+    ProductListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiEnvelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Product'
+
+    ProductDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Product'
+
+    ProductCreateResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Product'
